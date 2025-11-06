@@ -1,73 +1,86 @@
-# Welcome to your Lovable project
+🗺️ FrndZone
+Share your moment. Discover nearby vibes.
 
-## Project info
+FrndZone is a classy, smooth, and fun real-time social feed like BeReal + NGL, where users share what they’re doing within a chosen radius (1–60 km). Built with React.js, Tailwind CSS, Supabase, Leaflet, and Capacitor, it offers a modern, dynamic, and privacy-respectful experience with posts that auto-expire after 24 hours.
 
-**URL**: https://lovable.dev/projects/9ae1fca9-8499-4744-9906-e599565ea0bc
+✨ Features
 
-## How can I edit this code?
+🔐 Secure Auth System — Signup/login with email, phone number, username, and password, validated to ensure no duplicate email or phone.
 
-There are several ways of editing your application.
+📍 Real-Time Feed by Radius — Choose a distance (1–60 km) to view posts nearby in real time.
 
-**Use Lovable**
+👥 Friends & Profiles — Search for any username, view their profile, and see their posts. No friend requests or accept flow — fast and open, like Instagram’s follow model.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/9ae1fca9-8499-4744-9906-e599565ea0bc) and start prompting.
+🗺️ Map View (Leaflet + OpenStreetMap) — View all active users within your selected radius. If a user closes the app, their location automatically disappears.
 
-Changes made via Lovable will be committed automatically to this repo.
+🕒 Auto-Expiry — All posts vanish automatically after 24 hours, managed via Supabase Edge Functions.
 
-**Use your preferred IDE**
+💬 Comments & Replies — Threaded discussion on posts, keeping things clean and interactive.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+🎬 Beautiful Transitions — Powered by Framer Motion for minimal, professional animations (no bubbly gradients).
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+📱 Mobile-Ready via Capacitor — Responsive, installable, and works like a native mobile app.
 
-Follow these steps:
+💨 Deployed on Vercel — Optimized for speed, scalability, and seamless Supabase integration.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+🧭 Location-First Experience —
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+Splash screen with FrndZone logo + catchphrase
 
-# Step 3: Install the necessary dependencies.
-npm i
+Always asks to enable location when opening
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+Turns off location automatically when closed
+
+🧩 Tech Stack
+Layer	Technology
+Frontend	React.js, Tailwind CSS, Framer Motion
+Backend	Supabase (Auth, Database, Storage, Edge Functions)
+Maps	Leaflet + OpenStreetMap
+Mobile Integration	Capacitor
+Deployment	Vercel
+🗄️ Supabase Schema Overview
+
+Tables:
+
+profiles — User details (id, username, email, phone, avatar, location).
+
+posts — User posts with geolocation, text, image, and expires_at timestamp.
+
+comments — Threaded comments linked to posts and users.
+
+friends — Optional friend references for “Friends Feed”.
+
+Edge Function:
+
+cleanup_expired_posts() — Runs periodically to delete posts older than 24 hours.
+
+🚀 Getting Started
+1. Clone the repo
+git clone https://github.com/your-username/FrndZone.git
+cd FrndZone
+
+2. Install dependencies
+npm install
+
+3. Set up environment variables
+
+Create a .env file with your Supabase credentials:
+
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+
+4. Run the app locally
 npm run dev
-```
 
-**Edit a file directly in GitHub**
+5. Build for production
+npm run build
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+6. Deploy on Vercel
 
-**Use GitHub Codespaces**
+Connect the repo to Vercel
+ and deploy directly — everything is configured for production.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/9ae1fca9-8499-4744-9906-e599565ea0bc) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+7. Add mobile support
+npx cap add android
+npx cap add ios
+npx cap copy
