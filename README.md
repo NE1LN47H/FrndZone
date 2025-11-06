@@ -1,7 +1,7 @@
 🗺️ FrndZone
 Share your moment. Discover nearby vibes.
 
-FrndZone is a classy, smooth, and fun real-time social feed like BeReal + NGL, where users share what they’re doing within a chosen radius (1–60 km). Built with React.js, Tailwind CSS, Supabase, Leaflet, and Capacitor, it offers a modern, dynamic, and privacy-respectful experience with posts that auto-expire after 24 hours.
+FrndZone is a classy, smooth, and fun real-time social feed like BeReal + NGL, where users share what they’re doing within a chosen radius (1–100 km). Built with React.js, Tailwind CSS, Supabase, Leaflet, and Capacitor, it offers a modern, dynamic, and privacy-respectful experience with posts that auto-expire after 24 hours.
 
 ✨ Features
 
