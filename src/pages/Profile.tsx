@@ -106,11 +106,11 @@ const Profile = () => {
   };
 
   const contactDeveloper = () => {
-    window.location.href = "mailto:developer@example.com?subject=FrndZone%20Feedback";
+    window.location.href = "mailto:neilnath1337@gmail.com?subject=FrndZone%20Feedback";
   };
 
   const checkForUpdates = () => {
-    window.open("https://github.com/Neilnath/FrndZone", "_blank", "noopener,noreferrer");
+    window.open("https://github.com/NE1LN47H/FrndZone", "_blank", "noopener,noreferrer");
   };
 
   if (loading) {

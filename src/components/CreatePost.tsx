@@ -7,6 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
+import { Geolocation } from "@capacitor/geolocation";
 
 interface CreatePostProps {
   onPostCreated: () => void;
@@ -31,16 +33,37 @@ export const CreatePost = ({ onPostCreated, userLocation }: CreatePostProps) => 
     }
   };
 
-  const getFreshLocation = (): Promise<{ lat: number; lng: number } | null> => {
-    if (!("geolocation" in navigator)) return Promise.resolve(null);
-    return new Promise((resolve) => {
-      const done = (loc: { lat: number; lng: number } | null) => resolve(loc);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => done({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => done(null),
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-      );
-    });
+  const getFreshLocation = async (): Promise<{ lat: number; lng: number } | null> => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 5_000,
+          maximumAge: 0,
+        });
+        return {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+      }
+
+      if (!("geolocation" in navigator)) return null;
+
+      return await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) =>
+            resolve({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+            }),
+          () => resolve(null),
+          { enableHighAccuracy: true, timeout: 5_000, maximumAge: 0 }
+        );
+      });
+    } catch (error) {
+      console.error("Failed to get fresh location", error);
+      return null;
+    }
   };
 
   const handleSubmit = async () => {

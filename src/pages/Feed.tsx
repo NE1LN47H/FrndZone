@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
@@ -12,17 +12,24 @@ import { Slider } from "@/components/ui/slider";
 import { MapPin, LogOut, User as UserIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { useDeviceLocation } from "@/hooks/useDeviceLocation";
 
 type FeedType = "nearby" | "friends";
 
 const Feed = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isWaitingForAuth, setIsWaitingForAuth] = useState(false);
   const [feedType, setFeedType] = useState<FeedType>("nearby");
-  const [posts, setPosts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [maxDistance, setMaxDistance] = useState([10]);
   const navigate = useNavigate();
+  const { location: userLocation, isLoading: locationLoading, error: locationError } = useDeviceLocation({
+    highAccuracy: false,
+    maximumAgeMs: 60_000,
+    timeoutMs: 8_000,
+  });
+  const lastSyncedLocation = useRef<string | null>(null);
 
   // Initialize maxDistance from localStorage
   useEffect(() => {
@@ -43,116 +50,169 @@ const Feed = () => {
   }, [maxDistance]);
 
   useEffect(() => {
+    let mounted = true;
+    let authChecked = false;
+    let redirectTimeout: NodeJS.Timeout | null = null;
+    let currentUser: User | null = null;
+
+    // First, check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        navigate("/auth");
+      if (!mounted) return;
+      currentUser = session?.user ?? null;
+      setUser(currentUser);
+      authChecked = true;
+      setIsCheckingAuth(false);
+      if (!currentUser) {
+        // If no session, wait a bit for onAuthStateChange to fire (user might have just logged in)
+        setIsWaitingForAuth(true);
+        redirectTimeout = setTimeout(() => {
+          if (mounted && !currentUser) {
+            setIsWaitingForAuth(false);
+            navigate("/auth", { replace: true });
+          }
+        }, 2000);
       }
     });
 
+    // Listen for auth state changes (this will fire when user logs in)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        navigate("/auth");
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (redirectTimeout) {
+        clearTimeout(redirectTimeout);
+        redirectTimeout = null;
+      }
+      currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setIsWaitingForAuth(false);
+      if (!authChecked) {
+        authChecked = true;
+        setIsCheckingAuth(false);
+      }
+      if (!currentUser) {
+        navigate("/auth", { replace: true });
+        return;
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      if (redirectTimeout) {
+        clearTimeout(redirectTimeout);
+      }
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setUserLocation(location);
-          
-          // Update user's location in profile
-          if (user) {
-            try {
-              await supabase
-                .from("profiles")
-                .update({
-                  location: `POINT(${location.lng} ${location.lat})`,
-                })
-                .eq("id", user.id);
-            } catch (error) {
-              console.error("Error updating location:", error);
-            }
-          }
-        },
-        (error) => {
-          toast.error("Please enable location to see nearby posts");
-          console.error("Location error:", error);
-        }
-      );
-    }
-  }, [user]);
+    if (!user || !userLocation) return;
+    const rounded = `${userLocation.lat.toFixed(5)},${userLocation.lng.toFixed(5)}`;
+    if (lastSyncedLocation.current === rounded) return;
+    lastSyncedLocation.current = rounded;
 
-  // Clear posts immediately on filter changes to avoid stale items
+    supabase
+      .from("profiles")
+      .update({ location: `POINT(${userLocation.lng} ${userLocation.lat})` })
+      .eq("id", user.id)
+      .then(({ error }) => {
+        if (error) console.error("Error updating location:", error);
+      });
+  }, [user, userLocation]);
+
   useEffect(() => {
-    if (user && userLocation) {
-      setPosts([]);
-      loadPosts();
+    if (locationError) {
+      toast.error("Please enable location to see nearby posts");
     }
-  }, [user, feedType, userLocation, maxDistance]);
+  }, [locationError]);
 
-  const loadPosts = async () => {
-    setLoading(true);
-    try {
-      if (feedType === "nearby" && userLocation) {
-        const selectedKm = Math.round(maxDistance[0]);
+  const selectedKm = useMemo(() => Math.round(maxDistance[0]), [maxDistance]);
+
+  const postsQuery = useQuery({
+    queryKey: [
+      "feed-posts",
+      feedType,
+      user?.id,
+      feedType === "nearby" ? userLocation?.lat : null,
+      feedType === "nearby" ? userLocation?.lng : null,
+      feedType === "nearby" ? selectedKm : null,
+    ],
+    queryFn: async () => {
+      if (!user) throw new Error("Not authenticated");
+
+      if (feedType === "nearby") {
+        if (!userLocation) throw new Error("Location unavailable");
         const { data, error } = await supabase.rpc("get_nearby_posts", {
           user_lat: userLocation.lat,
           user_lng: userLocation.lng,
           max_distance_km: selectedKm,
         });
-
         if (error) throw error;
         const raw = (data as any[]) || [];
-        // Strict client-side filter: only show posts within or equal to selected distance
-        // This is a safety net in case SQL returns any posts beyond the limit
-        const filtered = raw.filter((p) => {
-          if (typeof p.distance_km !== "number" || Number.isNaN(p.distance_km)) {
-            console.warn("Post missing distance_km:", p.id);
-            return false;
-          }
-          const dist = Number(p.distance_km);
-          const shouldInclude = dist <= selectedKm;
-          if (!shouldInclude) {
-            console.warn(`Filtering out post ${p.id}: distance_km=${dist.toFixed(2)}km > selectedKm=${selectedKm}km`);
-          }
-          return shouldInclude;
-        });
-        console.log(`✅ Showing ${filtered.length} posts within ${selectedKm}km (filtered from ${raw.length} total)`);
-        setPosts(filtered);
-      } else if (feedType === "friends" && user) {
-        const { data, error } = await supabase.rpc("get_friend_posts", {
-          requesting_user_id: user.id,
-        });
-
-        if (error) throw error;
-        setPosts(data || []);
+        return raw.filter((p) =>
+          typeof p.distance_km === "number" && !Number.isNaN(p.distance_km)
+            ? Number(p.distance_km) <= selectedKm
+            : false
+        );
       }
-    } catch (error) {
-      console.error("Error loading posts:", error);
-      toast.error("Failed to load posts");
-    } finally {
-      setLoading(false);
+
+      const { data, error } = await supabase.rpc("get_friend_posts", {
+        requesting_user_id: user.id,
+      });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled:
+      !!user &&
+      (feedType === "friends" || (feedType === "nearby" && !!userLocation)),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
+  });
+
+  const posts = postsQuery.data ?? [];
+  const postsLoading = postsQuery.isInitialLoading;
+  const postsRefreshing = postsQuery.isFetching && !postsQuery.isInitialLoading;
+
+  // Handle query errors
+  useEffect(() => {
+    if (postsQuery.error) {
+      const message = postsQuery.error instanceof Error ? postsQuery.error.message : "Failed to load posts";
+      toast.error(message);
     }
-  };
+  }, [postsQuery.error]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
   };
 
-  if (!user) return null;
+  // Show loading while checking auth or waiting for auth state change
+  if (isCheckingAuth || isWaitingForAuth) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">
+            {isCheckingAuth ? "Loading..." : "Loading session..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // If no user after checking auth and not waiting, redirect
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -184,7 +244,7 @@ const Feed = () => {
 
       {/* Feed Toggle */}
       <div className="max-w-2xl mx-auto px-4 py-4 relative z-10">
-        <FeedToggle feedType={feedType} onChange={setFeedType} />
+      <FeedToggle feedType={feedType} onChange={setFeedType} />
         
         {feedType === "nearby" && (
           <div className="mt-4">
@@ -210,18 +270,33 @@ const Feed = () => {
       {/* Create Post */}
       {feedType === "nearby" && (
         <div className="max-w-2xl mx-auto px-4 mb-6">
-          <CreatePost onPostCreated={loadPosts} userLocation={userLocation} />
+          <CreatePost
+            onPostCreated={() => {
+              void postsQuery.refetch();
+            }}
+            userLocation={userLocation}
+          />
         </div>
       )}
 
       {/* Posts Feed */}
       <div className="max-w-2xl mx-auto px-4 space-y-4">
-        {loading ? (
+        {feedType === "nearby" && !userLocation && !locationLoading ? (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-12"
+          >
+            <p className="text-muted-foreground">
+              Waiting for your location to load. Please enable location services to see nearby posts.
+            </p>
+          </motion.div>
+        ) : postsLoading && (!Array.isArray(posts) || posts.length === 0) ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
             <p className="text-muted-foreground mt-4">Loading posts...</p>
           </div>
-        ) : posts.length === 0 ? (
+        ) : Array.isArray(posts) && posts.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -234,18 +309,29 @@ const Feed = () => {
             </p>
           </motion.div>
         ) : (
-          posts.map((post, index) => (
+          Array.isArray(posts) ? posts.map((post, index) => (
             <motion.div
               key={post.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
             >
-              <PostCard post={post} onUpdate={loadPosts} />
+              <PostCard
+                post={post}
+                onUpdate={() => {
+                  void postsQuery.refetch();
+                }}
+              />
             </motion.div>
-          ))
+          )) : null
         )}
       </div>
+
+      {postsRefreshing && (
+        <div className="fixed bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full bg-background/90 px-4 py-2 text-xs text-muted-foreground shadow-md">
+          Refreshing feed...
+        </div>
+      )}
 
       <BottomNav />
     </div>

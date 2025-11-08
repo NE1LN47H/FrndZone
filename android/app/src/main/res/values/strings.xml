@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FrndZone</string>
+    <string name="title_activity_main">FrndZone</string>
+    <string name="package_name">com.frndzone.app</string>
+    <string name="custom_url_scheme">com.frndzone.app</string>
+</resources>

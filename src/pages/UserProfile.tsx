@@ -101,6 +101,85 @@ const UserProfile = () => {
     }
   };
 
+  const acceptFriendRequest = async () => {
+    if (!currentUserId || !userId) return;
+    if (currentUserId === userId) return;
+
+    setSending(true);
+    try {
+      // Find the friend request
+      const { data: request, error: findError } = await supabase
+        .from("friend_requests")
+        .select("id, sender_id")
+        .eq("sender_id", userId)
+        .eq("receiver_id", currentUserId)
+        .eq("status", "pending")
+        .single();
+
+      if (findError || !request) {
+        throw new Error("Friend request not found");
+      }
+
+      // Check if friendship already exists
+      const { data: existingFriend } = await supabase
+        .from("friends")
+        .select("id")
+        .or(
+          `and(user_id.eq.${currentUserId},friend_id.eq.${userId}),and(user_id.eq.${userId},friend_id.eq.${currentUserId})`
+        )
+        .limit(1);
+
+      // Create friendship (bidirectional) if it doesn't exist
+      if (!existingFriend || existingFriend.length === 0) {
+        const { error: friendError } = await supabase.from("friends").insert([
+          { user_id: currentUserId, friend_id: userId },
+          { user_id: userId, friend_id: currentUserId },
+        ]);
+
+        if (friendError) throw friendError;
+      }
+
+      // Update request status to accepted
+      const { error: updateError } = await supabase
+        .from("friend_requests")
+        .update({ status: "accepted" })
+        .eq("id", request.id);
+
+      if (updateError) throw updateError;
+
+      toast.success("Friend request accepted!");
+      setIsFriend(true);
+      setHasPendingRequest(null);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to accept request");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const rejectFriendRequest = async () => {
+    if (!currentUserId || !userId) return;
+    if (currentUserId === userId) return;
+
+    setSending(true);
+    try {
+      const { error } = await supabase
+        .from("friend_requests")
+        .update({ status: "rejected" })
+        .eq("sender_id", userId)
+        .eq("receiver_id", currentUserId)
+        .eq("status", "pending");
+
+      if (error) throw error;
+      toast.success("Friend request declined");
+      setHasPendingRequest(null);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to decline request");
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -173,9 +252,23 @@ const UserProfile = () => {
                       Request Sent
                     </Button>
                   ) : hasPendingRequest === "received" ? (
-                    <Button disabled variant="secondary" className="min-w-[180px]">
-                      Request Pending
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={acceptFriendRequest}
+                        disabled={sending}
+                        className="min-w-[180px]"
+                      >
+                        Accept
+                      </Button>
+                      <Button
+                        onClick={rejectFriendRequest}
+                        disabled={sending}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Decline
+                      </Button>
+                    </div>
                   ) : (
                     <Button onClick={sendFriendRequest} disabled={sending} className="min-w-[180px]">
                       <UserPlus className="h-4 w-4 mr-2" />

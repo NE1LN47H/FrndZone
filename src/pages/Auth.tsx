@@ -146,9 +146,17 @@ const Auth = () => {
         });
 
         if (error) throw error;
-        if (data.user) {
+        if (data.user && data.session) {
           toast.success("Welcome back!");
-          navigate("/");
+          // Session is already available from signIn response
+          navigate("/", { replace: true });
+        } else if (data.user) {
+          // If session not immediately available, wait for onAuthStateChange
+          toast.success("Welcome back!");
+          // The Feed component will pick up the session via onAuthStateChange
+          setTimeout(() => {
+            navigate("/", { replace: true });
+          }, 200);
         }
       } else {
         // Check if username or phone already exists
@@ -183,7 +191,11 @@ const Auth = () => {
         if (error) throw error;
         if (data.user) {
           toast.success("Account created! Welcome to FrndZone");
-          navigate("/");
+          // Wait for session to be established before navigating
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            navigate("/", { replace: true });
+          }
         }
       }
     } catch (error: any) {
