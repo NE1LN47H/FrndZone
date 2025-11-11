@@ -31,7 +31,7 @@ export const FriendSearchSection = ({ userLocation }: FriendSearchSectionProps) 
     const saved = localStorage.getItem("friendSearchKm");
     if (saved) {
       const num = Number(saved);
-      if (!Number.isNaN(num) && num >= 1 && num <= 60) {
+      if (!Number.isNaN(num) && num >= 1 && num <= 100) {
         setSearchDistance([num]);
       }
     }
@@ -321,7 +321,7 @@ export const FriendSearchSection = ({ userLocation }: FriendSearchSectionProps) 
           value={searchDistance}
           onValueChange={setSearchDistance}
           min={1}
-          max={60}
+          max={100}
           step={1}
           className="w-full"
         />
